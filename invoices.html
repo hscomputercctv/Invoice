@@ -1,15 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>All Invoices · Invoice Manager</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Poppins:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Poppins:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap"
+    rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link rel="stylesheet" href="css/style.css" />
 </head>
+
 <body data-page="invoices" data-require="auth">
   <div class="bg-orbs" aria-hidden="true">
     <span class="orb orb-1"></span><span class="orb orb-2"></span><span class="orb orb-3"></span>
@@ -75,8 +79,16 @@
                 </tr>
               </thead>
               <tbody id="invoicesBody">
-                <tr><td colspan="7"><div class="skeleton-row"></div></td></tr>
-                <tr><td colspan="7"><div class="skeleton-row"></div></td></tr>
+                <tr>
+                  <td colspan="7">
+                    <div class="skeleton-row"></div>
+                  </td>
+                </tr>
+                <tr>
+                  <td colspan="7">
+                    <div class="skeleton-row"></div>
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -102,49 +114,100 @@
   </div>
 
   <script type="module">
-    import { requireAuth } from './js/auth.js';
-    import { supabase } from './js/supabase.js';
-    import { buildSidebar, buildUserChip, toast, fmtMoney, escapeHtml, confirmModal } from './js/app.js';
-    import { fetchInvoiceWithItems, printInvoice, invoiceHTML } from './js/invoice.js';
+    import {requireAuth} from './js/auth.js';
+    import {supabase} from './js/supabase.js';
+    import {buildSidebar, buildUserChip, toast, fmtMoney, escapeHtml, confirmModal} from './js/app.js';
+    import {fetchInvoiceWithItems, printInvoice, invoiceHTML} from './js/invoice.js';
 
-    const session = await requireAuth();
-    let settings = null;
-    if (session) {
-      await buildSidebar('invoices');
-      await buildUserChip();
-      const res = await supabase.from('settings').select('*').limit(1).maybeSingle();
-      settings = res.data || {};
-      loadInvoices();
-    }
+    // 🔥 HAR CHEEZ try/catch mein — module crash nahi hoga
+    window.__pageReady = false;
 
+    (async function init() {
+      try {
+        const auth = await requireAuth();
+        if (!auth) return;
+
+        // Sidebar load karo
+        try {await buildSidebar('invoices');}
+        catch (e) {console.error('[invoices] sidebar failed', e);}
+
+        try {await buildUserChip();}
+        catch (e) {console.error('[invoices] userchip failed', e);}
+
+        // Settings load karo
+        let settings = {};
+        try {
+          const res = await supabase.from('settings').select('*').limit(1).maybeSingle();
+          settings = res.data || {};
+        } catch (e) {
+          console.warn('[invoices] settings load failed', e);
+        }
+
+        // 🔥 Expose to window so event handlers can access
+        window.__settings = settings;
+        window.__session = auth.session;
+
+        // Ab data load karo
+        await loadInvoices();
+
+        // Filters attach karo
+        attachFilters();
+
+        // Row actions attach karo
+        attachRowActions();
+
+        // Modal close handlers
+        attachModalHandlers();
+
+        // CSV export
+        document.getElementById('exportBtn')?.addEventListener('click', exportCSV);
+
+        window.__pageReady = true;
+      } catch (e) {
+        console.error('[invoices] FATAL init error:', e);
+        toast('Page loaded with errors. Some features may not work.', 'error');
+      }
+    })();
+
+    /* ======================= STATE ======================= */
     const PAGE_SIZE = 10;
     let currentPage = 1;
     let allInvoices = [];
     let filtered = [];
 
-    const body = document.getElementById('invoicesBody');
-    const pag = document.getElementById('pagination');
-
+    /* ======================= LOAD ======================= */
     async function loadInvoices() {
-      body.innerHTML = `<tr><td colspan="7"><div class="skeleton-row"></div></td></tr>`;
-      const { data, error } = await supabase
-        .from('invoices').select('*').order('created_at', { ascending: false });
-      if (error) { toast(error.message, 'error'); return; }
+      const body = document.getElementById('invoicesBody');
+      if (body) body.innerHTML = `<tr><td colspan="7"><div class="skeleton-row"></div></td></tr>`;
+
+      const {data, error} = await supabase
+        .from('invoices')
+        .select('*')
+        .order('created_at', {ascending: false})
+        .limit(500); // 🔥 Cap to prevent hang with thousands of rows
+
+      if (error) {
+        console.error('[invoices] load error', error);
+        toast(error.message, 'error');
+        return;
+      }
       allInvoices = data || [];
       applyFilters();
     }
 
+    /* ======================= FILTERS ======================= */
     function applyFilters() {
-      const q = document.getElementById('searchInput').value.trim().toLowerCase();
-      const from = document.getElementById('dateFrom').value;
-      const to = document.getElementById('dateTo').value;
-      const status = document.getElementById('statusFilter').value;
-      const printState = document.getElementById('printFilter').value;
+      const q = (document.getElementById('searchInput')?.value || '').trim().toLowerCase();
+      const from = document.getElementById('dateFrom')?.value || '';
+      const to = document.getElementById('dateTo')?.value || '';
+      const status = document.getElementById('statusFilter')?.value || '';
+      const printState = document.getElementById('printFilter')?.value || '';
 
       filtered = allInvoices.filter(inv => {
         const date = (inv.invoice_date || inv.created_at || '').slice(0, 10);
         if (q) {
-          const hay = [inv.invoice_no, inv.customer_name, inv.customer_phone].join(' ').toLowerCase();
+          const hay = [inv.invoice_no, inv.customer_name, inv.customer_phone]
+            .filter(Boolean).join(' ').toLowerCase();
           if (!hay.includes(q)) return false;
         }
         if (from && date < from) return false;
@@ -158,115 +221,164 @@
       render();
     }
 
+    function attachFilters() {
+      const ids = ['searchInput', 'dateFrom', 'dateTo', 'statusFilter', 'printFilter'];
+      ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const evt = el.tagName === 'INPUT' && el.type === 'text' ? 'input' : 'change';
+        el.addEventListener(evt, () => {
+          try {applyFilters();} catch (e) {console.error(e);}
+        });
+      });
+
+      document.getElementById('clearFilters')?.addEventListener('click', () => {
+        ['searchInput', 'dateFrom', 'dateTo'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.value = '';
+        });
+        ['statusFilter', 'printFilter'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.value = '';
+        });
+        applyFilters();
+      });
+    }
+
+    /* ======================= RENDER ======================= */
     function render() {
-      const currency = settings?.currency || 'PKR';
+      const body = document.getElementById('invoicesBody');
+      if (!body) return;
+
+      const currency = (window.__settings?.currency) || 'PKR';
       const start = (currentPage - 1) * PAGE_SIZE;
       const pageItems = filtered.slice(start, start + PAGE_SIZE);
 
       if (!pageItems.length) {
         body.innerHTML = `<tr><td colspan="7"><div class="empty-state"><i class="fa-regular fa-folder-open"></i><p>No invoices found</p></div></td></tr>`;
-        pag.innerHTML = '';
+        const pag = document.getElementById('pagination');
+        if (pag) pag.innerHTML = '';
         return;
       }
 
       body.innerHTML = pageItems.map(inv => {
-        const pay = (inv.payment_status || 'Unpaid');
-        const pr = (inv.print_status || 'pending');
+        const pay = inv.payment_status || 'Unpaid';
+        const pr = inv.print_status || 'pending';
         return `
-          <tr>
-            <td><strong>${escapeHtml(inv.invoice_no || '—')}</strong></td>
-            <td>${escapeHtml(inv.customer_name || 'Walk-in')}<br><small>${escapeHtml(inv.customer_phone || '')}</small></td>
-            <td>${escapeHtml((inv.invoice_date || inv.created_at || '').slice(0,10))}</td>
-            <td><strong>${fmtMoney(inv.total, currency)}</strong></td>
-            <td><span class="badge badge-${pay.toLowerCase()}">${escapeHtml(pay)}</span></td>
-            <td><span class="badge badge-${pr.toLowerCase()}">${escapeHtml(pr)}</span></td>
-            <td class="row-actions">
-              <button class="icon-btn" data-act="view" data-id="${inv.id}" title="View"><i class="fa-regular fa-eye"></i></button>
-              <button class="icon-btn" data-act="print" data-id="${inv.id}" title="Print"><i class="fa-solid fa-print"></i></button>
-              <button class="icon-btn danger" data-act="delete" data-id="${inv.id}" title="Delete"><i class="fa-solid fa-trash"></i></button>
-            </td>
-          </tr>`;
+        <tr>
+          <td><strong>${escapeHtml(inv.invoice_no || '—')}</strong></td>
+          <td>${escapeHtml(inv.customer_name || 'Walk-in')}<br><small>${escapeHtml(inv.customer_phone || '')}</small></td>
+          <td>${escapeHtml((inv.invoice_date || inv.created_at || '').slice(0, 10))}</td>
+          <td><strong>${fmtMoney(inv.total, currency)}</strong></td>
+          <td><span class="badge badge-${pay.toLowerCase()}">${escapeHtml(pay)}</span></td>
+          <td><span class="badge badge-${pr.toLowerCase()}">${escapeHtml(pr)}</span></td>
+          <td class="row-actions">
+            <button class="icon-btn" data-act="view" data-id="${inv.id}" title="View"><i class="fa-regular fa-eye"></i></button>
+            <button class="icon-btn" data-act="print" data-id="${inv.id}" title="Print"><i class="fa-solid fa-print"></i></button>
+            <button class="icon-btn danger" data-act="delete" data-id="${inv.id}" title="Delete"><i class="fa-solid fa-trash"></i></button>
+          </td>
+        </tr>`;
       }).join('');
 
       renderPagination();
     }
 
     function renderPagination() {
+      const pag = document.getElementById('pagination');
+      if (!pag) return;
       const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-      let html = '';
-      html += `<button class="icon-btn" ${currentPage === 1 ? 'disabled' : ''} data-page="${currentPage - 1}"><i class="fa-solid fa-chevron-left"></i></button>`;
-      html += `<span class="page-info">Page ${currentPage} of ${totalPages}</span>`;
-      html += `<button class="icon-btn" ${currentPage === totalPages ? 'disabled' : ''} data-page="${currentPage + 1}"><i class="fa-solid fa-chevron-right"></i></button>`;
-      pag.innerHTML = html;
+      pag.innerHTML = `
+      <button class="icon-btn" ${currentPage === 1 ? 'disabled' : ''} data-page="${currentPage - 1}">
+        <i class="fa-solid fa-chevron-left"></i>
+      </button>
+      <span class="page-info">Page ${currentPage} of ${totalPages}</span>
+      <button class="icon-btn" ${currentPage === totalPages ? 'disabled' : ''} data-page="${currentPage + 1}">
+        <i class="fa-solid fa-chevron-right"></i>
+      </button>`;
+
+      pag.querySelectorAll('button[data-page]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          if (btn.disabled) return;
+          currentPage = Number(btn.dataset.page);
+          render();
+          window.scrollTo({top: 0, behavior: 'smooth'});
+        });
+      });
     }
 
-    pag.addEventListener('click', (e) => {
-      const btn = e.target.closest('button[data-page]');
-      if (!btn || btn.disabled) return;
-      currentPage = Number(btn.dataset.page);
-      render();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
+    /* ======================= ROW ACTIONS ======================= */
+    function attachRowActions() {
+      const body = document.getElementById('invoicesBody');
+      if (!body) return;
 
-    document.getElementById('searchInput').addEventListener('input', applyFilters);
-    ['dateFrom','dateTo','statusFilter','printFilter'].forEach(id =>
-      document.getElementById(id).addEventListener('change', applyFilters));
-    document.getElementById('clearFilters').addEventListener('click', () => {
-      document.getElementById('searchInput').value = '';
-      document.getElementById('dateFrom').value = '';
-      document.getElementById('dateTo').value = '';
-      document.getElementById('statusFilter').value = '';
-      document.getElementById('printFilter').value = '';
-      applyFilters();
-    });
+      body.addEventListener('click', async (e) => {
+        const btn = e.target.closest('button[data-act]');
+        if (!btn) return;
+        const {act, id} = btn.dataset;
 
-    // Row actions
-    body.addEventListener('click', async (e) => {
-      const btn = e.target.closest('button[data-act]');
-      if (!btn) return;
-      const { act, id } = btn.dataset;
-      if (act === 'view') return openView(id);
-      if (act === 'print') return quickPrint(id);
-      if (act === 'delete') return confirmDelete(id);
-    });
+        try {
+          if (act === 'view') return await openView(id);
+          if (act === 'print') return await quickPrint(id);
+          if (act === 'delete') return await handleDelete(id);
+        } catch (err) {
+          console.error('[invoices] action error', err);
+          toast(err.message || 'Action failed', 'error');
+        }
+      });
+    }
 
     async function openView(id) {
-      const { data, error } = await fetchInvoiceWithItems(id);
+      const {data, error} = await fetchInvoiceWithItems(id);
       if (error) return toast(error.message, 'error');
+
       const wrap = document.getElementById('viewBody');
-      wrap.innerHTML = invoiceHTML(data.invoice, data.items, settings, { forScreen: true });
+      if (wrap) wrap.innerHTML = invoiceHTML(data.invoice, data.items, window.__settings, {forScreen: true});
+
       const modal = document.getElementById('viewModal');
-      modal.hidden = false;
-      requestAnimationFrame(() => modal.classList.add('open'));
-      document.getElementById('modalPrintBtn').onclick = () => doPrint(data);
+      if (modal) {
+        modal.hidden = false;
+        requestAnimationFrame(() => modal.classList.add('open'));
+      }
+      const printBtn = document.getElementById('modalPrintBtn');
+      if (printBtn) printBtn.onclick = () => doPrint(data);
     }
 
     function closeModal() {
       const modal = document.getElementById('viewModal');
+      if (!modal) return;
       modal.classList.remove('open');
-      setTimeout(() => modal.hidden = true, 240);
+      setTimeout(() => {modal.hidden = true;}, 240);
     }
-    document.getElementById('viewModal').addEventListener('click', (e) => {
-      if (e.target.dataset.close !== undefined) closeModal();
-    });
+
+    function attachModalHandlers() {
+      const modal = document.getElementById('viewModal');
+      if (!modal) return;
+      modal.addEventListener('click', (e) => {
+        if (e.target.dataset.close !== undefined) closeModal();
+      });
+    }
 
     async function quickPrint(id) {
-      const { data, error } = await fetchInvoiceWithItems(id);
+      const {data, error} = await fetchInvoiceWithItems(id);
       if (error) return toast(error.message, 'error');
-      doPrint(data);
+      await doPrint(data);
     }
 
     async function doPrint(data) {
-      printInvoice(data.invoice, data.items, settings);
-      // Mark as printed
-      await supabase.from('invoices')
-        .update({ print_status: 'printed', printed_at: new Date().toISOString() })
-        .eq('id', data.invoice.id);
-      toast('Sent to printer', 'success');
-      loadInvoices();
+      try {
+        printInvoice(data.invoice, data.items, window.__settings);
+        await supabase.from('invoices')
+          .update({print_status: 'printed', printed_at: new Date().toISOString()})
+          .eq('id', data.invoice.id);
+        toast('Sent to printer', 'success');
+        loadInvoices();
+      } catch (e) {
+        console.error('[invoices] print error', e);
+        toast('Print failed: ' + e.message, 'error');
+      }
     }
 
-    async function confirmDelete(id) {
+    async function handleDelete(id) {
       const inv = allInvoices.find(i => i.id === id);
       const ok = await confirmModal({
         title: 'Delete invoice?',
@@ -275,28 +387,30 @@
         confirmText: 'Delete',
       });
       if (!ok) return;
-      const { error } = await supabase.from('invoices').delete().eq('id', id);
+
+      const {error} = await supabase.from('invoices').delete().eq('id', id);
       if (error) return toast(error.message, 'error');
       toast('Invoice deleted', 'success');
       loadInvoices();
     }
 
-    // CSV export
-    document.getElementById('exportBtn').addEventListener('click', () => {
+    /* ======================= CSV EXPORT ======================= */
+    function exportCSV() {
       if (!filtered.length) return toast('Nothing to export', 'error');
-      const headers = ['Invoice No','Customer','Phone','Date','Subtotal','Discount','Tax','Total','Payment','Print'];
+      const headers = ['Invoice No', 'Customer', 'Phone', 'Date', 'Subtotal', 'Discount', 'Tax', 'Total', 'Payment', 'Print'];
       const rows = filtered.map(i => [
         i.invoice_no, i.customer_name, i.customer_phone, i.invoice_date,
         i.subtotal, i.discount, i.tax, i.total, i.payment_status, i.print_status
       ]);
       const csv = [headers, ...rows].map(r => r.map(csvCell).join(',')).join('\n');
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = `invoices-${Date.now()}.csv`;
       a.click();
+      URL.revokeObjectURL(a.href);
       toast('CSV exported', 'success');
-    });
+    }
 
     function csvCell(v) {
       const s = String(v ?? '');
@@ -304,4 +418,5 @@
     }
   </script>
 </body>
+
 </html>

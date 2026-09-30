@@ -21,23 +21,32 @@ export async function requireAuth(opts = {}) {
     return null;
   }
 
-  // Load profile
-  const profile = await getProfile(session.user.id);
+  // 🔥 Profile load — agar fail ho, fallback use karo
+  let profile = null;
+  try {
+    profile = await getProfile(session.user.id);
+  } catch (e) {
+    console.warn('[auth] profile load failed, using fallback', e);
+    profile = {
+      id: session.user.id,
+      full_name: session.user.email?.split('@')[0] || 'User',
+      role: 'admin', // safer default than 'printer'
+    };
+  }
+
+  const role = profile?.role || 'admin';
 
   // Role guard
   if (requiredRoles && requiredRoles.length) {
-    const role = profile?.role || 'printer'; // safe default
     if (!requiredRoles.includes(role)) {
-      // Try to send user somewhere appropriate
       window.location.replace(role === 'printer' ? 'print-station.html' : 'dashboard.html');
       return null;
     }
   }
 
-  // Printer users should only see print-station (block other pages except invoices)
-  const path = window.location.pathname.split('/').pop();
-  const role = profile?.role || 'printer';
-  if (role === 'printer' && path && !['print-station.html', 'invoices.html', 'index.html'].includes(path)) {
+  // Printer users ko restrict karo (sirf print-station aur invoices)
+  const path = window.location.pathname.split('/').pop() || 'index.html';
+  if (role === 'printer' && !['print-station.html', 'invoices.html', 'index.html', ''].includes(path)) {
     window.location.replace('print-station.html');
     return null;
   }

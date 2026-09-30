@@ -117,6 +117,19 @@ export function confirmModal({
   danger = false,
 } = {}) {
   return new Promise((resolve) => {
+    let resolved = false;
+    const safeResolve = (val) => {
+      if (resolved) return;
+      resolved = true;
+      try {
+        backdrop.classList.remove('open');
+        setTimeout(() => {
+          try { backdrop.remove(); } catch (_) {}
+        }, 260);
+      } catch (_) {}
+      resolve(val);
+    };
+
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
     backdrop.innerHTML = `
@@ -133,21 +146,24 @@ export function confirmModal({
           <button class="btn ${danger ? 'btn-danger' : 'btn-primary'} shimmer" data-confirm>${escapeHtml(confirmText)}</button>
         </div>
       </div>`;
+
     document.body.appendChild(backdrop);
     requestAnimationFrame(() => backdrop.classList.add('open'));
 
-    const close = (val) => {
-      backdrop.classList.remove('open');
-      setTimeout(() => backdrop.remove(), 260);
-      resolve(val);
-    };
     backdrop.addEventListener('click', (e) => {
-      if (e.target === backdrop) return close(false);
-      const t = e.target.closest('[data-close]');
-      if (t) return close(false);
-      const c = e.target.closest('[data-confirm]');
-      if (c) return close(true);
+      if (e.target === backdrop) return safeResolve(false);
+      if (e.target.closest('[data-close]')) return safeResolve(false);
+      if (e.target.closest('[data-confirm]')) return safeResolve(true);
     });
+
+    // ESC key
+    const escHandler = (e) => {
+      if (e.key === 'Escape') {
+        document.removeEventListener('keydown', escHandler);
+        safeResolve(false);
+      }
+    };
+    document.addEventListener('keydown', escHandler);
   });
 }
 
@@ -164,30 +180,40 @@ export async function buildSidebar(activeKey) {
   const sidebar = document.getElementById('sidebar');
   if (!sidebar) return;
 
-  // Load settings + profile
+  // 🔥 Defaults — kuch bhi fail ho, sidebar phir bhi render hoga
   let shopName = 'My Shop';
   let logoUrl = 'assets/logo.png';
-  try {
-    const { data: settings } = await supabase.from('settings').select('shop_name, logo_url').limit(1).maybeSingle();
-    if (settings?.shop_name) shopName = settings.shop_name;
-    if (settings?.logo_url) logoUrl = settings.logo_url;
-  } catch (_) {}
-
   let role = 'admin';
-  let fullName = '';
+
+  // Settings load — alag try/catch
+  try {
+    const { data } = await supabase
+      .from('settings')
+      .select('shop_name, logo_url')
+      .limit(1)
+      .maybeSingle();
+    if (data?.shop_name) shopName = data.shop_name;
+    if (data?.logo_url) logoUrl = data.logo_url;
+  } catch (e) {
+    console.warn('[sidebar] settings load failed (using defaults)', e);
+  }
+
+  // Profile load — alag try/catch
   try {
     const { data: userData } = await supabase.auth.getUser();
     if (userData?.user) {
       const profile = await getProfile(userData.user.id);
       role = profile?.role || 'admin';
-      fullName = profile?.full_name || userData.user.email || '';
     }
-  } catch (_) {}
+  } catch (e) {
+    console.warn('[sidebar] profile load failed (using admin)', e);
+  }
 
   const brandLogoHTML = logoUrl
     ? `<img src="${escapeHtml(logoUrl)}" alt="logo" onerror="this.style.display='none';this.parentNode.innerHTML='<i class=\\'fa-solid fa-receipt\\'></i>';" />`
     : `<i class="fa-solid fa-receipt"></i>`;
 
+  // 🔥 ALWAYS set innerHTML — kabhi fail nahi hoga
   sidebar.innerHTML = `
     <div class="sidebar-brand">
       <div class="brand-logo">${brandLogoHTML}</div>
@@ -203,6 +229,50 @@ export async function buildSidebar(activeKey) {
       <i class="fa-solid fa-right-from-bracket"></i><span>Logout</span>
     </button>
   `;
+
+  // Backdrop
+  let backdrop = document.querySelector('.sidebar-backdrop');
+  if (!backdrop) {
+    backdrop = document.createElement('div');
+    backdrop.className = 'sidebar-backdrop';
+    document.body.appendChild(backdrop);
+  }
+  backdrop.addEventListener('click', () => {
+    sidebar.classList.remove('open');
+    backdrop.classList.remove('show');
+  });
+
+  // Menu button
+  const menuBtn = document.getElementById('menuBtn');
+  if (menuBtn) {
+    // 🔥 Remove old listeners to avoid duplicates
+    const newBtn = menuBtn.cloneNode(true);
+    menuBtn.parentNode.replaceChild(newBtn, menuBtn);
+    newBtn.addEventListener('click', () => {
+      const isOpen = sidebar.classList.toggle('open');
+      backdrop.classList.toggle('show', isOpen);
+    });
+  }
+
+  // Logout
+  const logoutBtn = document.getElementById('logoutBtn');
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', async () => {
+      const ok = await confirmModal({
+        title: 'Log out?',
+        message: 'You will need to sign in again to access the app.',
+        confirmText: 'Log out',
+        danger: true,
+      });
+      if (ok) {
+        const { logout } = await import('./auth.js');
+        logout();
+      }
+    });
+  }
+
+  try { rippleAll(); } catch (_) {}
+}
 
   // Backdrop for mobile
   let backdrop = document.querySelector('.sidebar-backdrop');
