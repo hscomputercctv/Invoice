@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard · Invoice Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Poppins:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body data-page="dashboard" data-require="auth">
+  <div class="bg-orbs" aria-hidden="true">
+    <span class="orb orb-1"></span><span class="orb orb-2"></span><span class="orb orb-3"></span>
+    <div class="grid-overlay"></div>
+  </div>
+
+  <div class="app-shell">
+    <!-- Sidebar injected by app.js -->
+    <aside id="sidebar" class="sidebar"></aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" id="menuBtn" aria-label="Open menu">
+          <i class="fa-solid fa-bars"></i>
+        </button>
+        <h1 class="page-title">Dashboard</h1>
+        <div class="topbar-actions">
+          <button class="icon-btn" id="refreshBtn" title="Refresh"><i class="fa-solid fa-rotate"></i></button>
+          <div class="user-chip" id="userChip"></div>
+        </div>
+      </header>
+
+      <section class="page-body">
+        <!-- Stat cards -->
+        <div class="stats-grid">
+          <div class="glass-card stat-card page-enter" style="--delay:0s">
+            <div class="stat-icon"><i class="fa-solid fa-file-invoice"></i></div>
+            <div class="stat-meta">
+              <p class="stat-label">Total Invoices</p>
+              <p class="stat-value"><span class="counter" data-target="0" id="statTotal">0</span></p>
+            </div>
+          </div>
+          <div class="glass-card stat-card page-enter" style="--delay:.08s">
+            <div class="stat-icon"><i class="fa-solid fa-sack-dollar"></i></div>
+            <div class="stat-meta">
+              <p class="stat-label">Today's Sales</p>
+              <p class="stat-value"><span id="statToday">0</span></p>
+            </div>
+          </div>
+          <div class="glass-card stat-card page-enter" style="--delay:.16s">
+            <div class="stat-icon"><i class="fa-solid fa-chart-line"></i></div>
+            <div class="stat-meta">
+              <p class="stat-label">This Month</p>
+              <p class="stat-value"><span id="statMonth">0</span></p>
+            </div>
+          </div>
+          <div class="glass-card stat-card page-enter" style="--delay:.24s">
+            <div class="stat-icon"><i class="fa-solid fa-print"></i></div>
+            <div class="stat-meta">
+              <p class="stat-label">Pending Prints</p>
+              <p class="stat-value"><span class="counter" data-target="0" id="statPending">0</span></p>
+            </div>
+          </div>
+          <div class="glass-card stat-card page-enter" style="--delay:.32s">
+            <div class="stat-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+            <div class="stat-meta">
+              <p class="stat-label">Unpaid Amount</p>
+              <p class="stat-value"><span id="statUnpaid">0</span></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chart -->
+        <div class="glass-card chart-card page-enter" style="--delay:.4s">
+          <div class="card-head">
+            <h2>Sales · Last 14 Days</h2>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="salesChart" height="220"></canvas>
+          </div>
+        </div>
+
+        <!-- Recent invoices -->
+        <div class="glass-card table-card page-enter" style="--delay:.48s">
+          <div class="card-head">
+            <h2>Recent Invoices</h2>
+            <a href="invoices.html" class="link-btn">View all <i class="fa-solid fa-arrow-right"></i></a>
+          </div>
+          <div id="recentList" class="recent-list">
+            <div class="skeleton-row"></div><div class="skeleton-row"></div><div class="skeleton-row"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module">
+    import { requireAuth } from './js/auth.js';
+    import { supabase } from './js/supabase.js';
+    import { fmtMoney, escapeHtml, toast, animateCounter, buildSidebar, buildUserChip } from './js/app.js';
+
+    const session = await requireAuth();
+    if (session) {
+      await buildSidebar('dashboard');
+      await buildUserChip();
+      loadDashboard();
+      document.getElementById('refreshBtn').addEventListener('click', loadDashboard);
+    }
+
+    async function loadDashboard() {
+      const { data: settings } = await supabase.from('settings').select('*').limit(1).maybeSingle();
+      const currency = settings?.currency || 'PKR';
+
+      // Total invoices
+      const { count: totalCount } = await supabase
+        .from('invoices').select('*', { count: 'exact', head: true });
+      animateCounter(document.getElementById('statTotal'), totalCount || 0);
+
+      // Pending prints
+      const { count: pending } = await supabase
+        .from('invoices').select('*', { count: 'exact', head: true }).eq('print_status', 'pending');
+      animateCounter(document.getElementById('statPending'), pending || 0);
+
+      // Fetch invoices for aggregates
+      const { data: invoices } = await supabase
+        .from('invoices').select('*').order('created_at', { ascending: false });
+
+      const all = invoices || [];
+      const today = new Date().toISOString().slice(0, 10);
+      const monthPrefix = today.slice(0, 7);
+
+      const todayTotal = all
+        .filter(i => (i.invoice_date || i.created_at || '').slice(0, 10) === today)
+        .reduce((s, i) => s + Number(i.total || 0), 0);
+      const monthTotal = all
+        .filter(i => (i.invoice_date || i.created_at || '').slice(0, 7) === monthPrefix)
+        .reduce((s, i) => s + Number(i.total || 0), 0);
+      const unpaidTotal = all
+        .filter(i => (i.payment_status || 'unpaid') !== 'paid')
+        .reduce((s, i) => s + Number(i.total || 0), 0);
+
+      document.getElementById('statToday').textContent = fmtMoney(todayTotal, currency);
+      document.getElementById('statMonth').textContent = fmtMoney(monthTotal, currency);
+      document.getElementById('statUnpaid').textContent = fmtMoney(unpaidTotal, currency);
+
+      renderRecent(all.slice(0, 8), currency);
+      drawChart(all, currency);
+    }
+
+    function renderRecent(list, currency) {
+      const el = document.getElementById('recentList');
+      if (!list.length) {
+        el.innerHTML = `<div class="empty-state"><i class="fa-regular fa-folder-open"></i><p>No invoices yet</p></div>`;
+        return;
+      }
+      el.innerHTML = list.map(inv => {
+        const statusCls = (inv.payment_status || 'unpaid').toLowerCase();
+        const printCls = (inv.print_status || 'pending').toLowerCase();
+        return `
+          <div class="recent-item">
+            <div class="ri-left">
+              <div class="ri-no">${escapeHtml(inv.invoice_no || '—')}</div>
+              <div class="ri-cust">${escapeHtml(inv.customer_name || 'Walk-in')}</div>
+            </div>
+            <div class="ri-mid">
+              <span class="badge badge-${statusCls}">${escapeHtml(inv.payment_status || 'Unpaid')}</span>
+              <span class="badge badge-${printCls}">${escapeHtml(inv.print_status || 'pending')}</span>
+            </div>
+            <div class="ri-right">
+              <div class="ri-total">${fmtMoney(inv.total, currency)}</div>
+              <div class="ri-date">${escapeHtml((inv.invoice_date || inv.created_at || '').slice(0,10))}</div>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    /* ---------- Canvas chart (pure JS, no dependency) ---------- */
+    function drawChart(invoices, currency) {
+      const canvas = document.getElementById('salesChart');
+      if (!canvas) return;
+      const dpr = window.devicePixelRatio || 1;
+      const cssW = canvas.clientWidth || 600;
+      const cssH = 220;
+      canvas.width = cssW * dpr;
+      canvas.height = cssH * dpr;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+
+      const days = 14;
+      const labels = [];
+      const values = [];
+      const now = new Date();
+      for (let i = days - 1; i >= 0; i--) {
+        const d = new Date(now); d.setDate(now.getDate() - i);
+        const key = d.toISOString().slice(0, 10);
+        labels.push(key.slice(5));
+        const sum = invoices
+          .filter(inv => (inv.invoice_date || inv.created_at || '').slice(0,10) === key)
+          .reduce((s, inv) => s + Number(inv.total || 0), 0);
+        values.push(sum);
+      }
+
+      const maxV = Math.max(...values, 1);
+      const padL = 44, padR = 16, padT = 18, padB = 34;
+      const w = cssW - padL - padR;
+      const h = cssH - padT - padB;
+
+      ctx.clearRect(0, 0, cssW, cssH);
+
+      // grid + y labels
+      ctx.strokeStyle = 'rgba(192,198,208,0.12)';
+      ctx.fillStyle = 'rgba(192,198,208,0.6)';
+      ctx.font = '11px Inter, sans-serif';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = padT + (h / 4) * i;
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + w, y); ctx.stroke();
+        const val = maxV - (maxV / 4) * i;
+        ctx.fillText(shortNum(val), 6, y + 4);
+      }
+
+      // area gradient
+      const grad = ctx.createLinearGradient(0, padT, 0, padT + h);
+      grad.addColorStop(0, 'rgba(0,198,255,0.45)');
+      grad.addColorStop(1, 'rgba(0,114,255,0.02)');
+
+      const stepX = w / (days - 1);
+      const pts = values.map((v, i) => ({
+        x: padL + stepX * i,
+        y: padT + h - (v / maxV) * h
+      }));
+
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, padT + h);
+      pts.forEach(p => ctx.lineTo(p.x, p.y));
+      ctx.lineTo(pts[pts.length - 1].x, padT + h);
+      ctx.closePath();
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      // line
+      ctx.beginPath();
+      pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+      const stroke = ctx.createLinearGradient(padL, 0, padL + w, 0);
+      stroke.addColorStop(0, '#00c6ff');
+      stroke.addColorStop(1, '#00e5ff');
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = 'rgba(0,198,255,0.55)';
+      ctx.shadowBlur = 12;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // dots
+      pts.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+        ctx.fillStyle = '#00e5ff';
+        ctx.fill();
+      });
+
+      // x labels
+      ctx.fillStyle = 'rgba(192,198,208,0.75)';
+      ctx.font = '10px Inter, sans-serif';
+      labels.forEach((l, i) => {
+        if (i % 2 === 0) ctx.fillText(l, pts[i].x - 14, cssH - 10);
+      });
+    }
+
+    function shortNum(n) {
+      if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+      if (n >= 1e3) return (n/1e3).toFixed(1) + 'k';
+      return String(Math.round(n));
+    }
+
+    window.addEventListener('resize', () => loadDashboard());
+  </script>
+</body>
+</html>

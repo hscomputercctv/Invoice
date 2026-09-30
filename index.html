@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login · Invoice Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Poppins:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body class="auth-body">
+  <!-- Animated background orbs -->
+  <div class="bg-orbs" aria-hidden="true">
+    <span class="orb orb-1"></span>
+    <span class="orb orb-2"></span>
+    <span class="orb orb-3"></span>
+    <div class="grid-overlay"></div>
+  </div>
+
+  <main class="auth-wrap">
+    <section class="glass-card auth-card page-enter">
+      <div class="auth-logo">
+        <img src="assets/logo.png" alt="Shop Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';" />
+        <div class="logo-fallback" style="display:none;"><i class="fa-solid fa-receipt"></i></div>
+      </div>
+
+      <h1 class="auth-title">Welcome Back</h1>
+      <p class="auth-sub">Sign in to manage your shop invoices</p>
+
+      <form id="loginForm" class="auth-form" novalidate>
+        <div class="field">
+          <label for="email">Email Address</label>
+          <div class="input-wrap">
+            <i class="fa-regular fa-envelope"></i>
+            <input type="email" id="email" name="email" placeholder="you@example.com" autocomplete="email" required />
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="password">Password</label>
+          <div class="input-wrap">
+            <i class="fa-solid fa-lock"></i>
+            <input type="password" id="password" name="password" placeholder="••••••••" autocomplete="current-password" required />
+            <button type="button" class="toggle-pw" id="togglePw" aria-label="Show password">
+              <i class="fa-regular fa-eye"></i>
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block shimmer" id="loginBtn">
+          <span class="btn-label"><i class="fa-solid fa-right-to-bracket"></i> Sign In</span>
+          <span class="btn-spinner" hidden><i class="fa-solid fa-circle-notch fa-spin"></i></span>
+        </button>
+
+        <div id="loginError" class="form-error" hidden></div>
+      </form>
+
+      <footer class="auth-footer">
+        <div class="shop-info">
+          <p class="shop-name" id="shopNameFooter">My Shop</p>
+          <p class="shop-addr"><i class="fa-solid fa-location-dot"></i> Plot D, 48, Metroville Block-4, Karachi, Pakistan</p>
+          <p class="shop-phone"><i class="fa-solid fa-phone"></i> +92 315 8901026</p>
+        </div>
+      </footer>
+    </section>
+  </main>
+
+  <script type="module">
+    import { supabase } from './js/supabase.js';
+    import { toast } from './js/app.js';
+
+    // Load shop name (public settings read may fail if RLS blocks anon; fallback)
+    (async () => {
+      try {
+        const { data } = await supabase.from('settings').select('shop_name').limit(1).maybeSingle();
+        if (data?.shop_name) document.getElementById('shopNameFooter').textContent = data.shop_name;
+      } catch (_) { /* ignore */ }
+    })();
+
+    // Password show/hide
+    const pw = document.getElementById('password');
+    document.getElementById('togglePw').addEventListener('click', () => {
+      const isText = pw.type === 'text';
+      pw.type = isText ? 'password' : 'text';
+      document.getElementById('togglePw').innerHTML = isText
+        ? '<i class="fa-regular fa-eye"></i>'
+        : '<i class="fa-regular fa-eye-slash"></i>';
+    });
+
+    // Login
+    const form = document.getElementById('loginForm');
+    const btn = document.getElementById('loginBtn');
+    const errEl = document.getElementById('loginError');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errEl.hidden = true;
+      const email = form.email.value.trim();
+      const password = form.password.value;
+
+      if (!email || !password) {
+        errEl.textContent = 'Please enter both email and password.';
+        errEl.hidden = false;
+        return;
+      }
+
+      btn.classList.add('loading');
+      btn.querySelector('.btn-label').hidden = true;
+      btn.querySelector('.btn-spinner').hidden = false;
+
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+      btn.classList.remove('loading');
+      btn.querySelector('.btn-label').hidden = false;
+      btn.querySelector('.btn-spinner').hidden = true;
+
+      if (error) {
+        errEl.textContent = error.message || 'Login failed. Check your credentials.';
+        errEl.hidden = false;
+        toast(error.message || 'Login failed', 'error');
+        return;
+      }
+
+      // Fetch role
+      let role = 'admin';
+      try {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role, full_name')
+          .eq('id', data.user.id)
+          .maybeSingle();
+        if (profile?.role) role = profile.role;
+      } catch (_) {}
+
+      toast('Welcome back!', 'success');
+
+      setTimeout(() => {
+        if (role === 'printer') {
+          window.location.href = 'print-station.html';
+        } else {
+          window.location.href = 'dashboard.html';
+        }
+      }, 400);
+    });
+
+    // Session guard: if already logged in, redirect
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const { data: profile } = await supabase
+          .from('profiles').select('role').eq('id', session.user.id).maybeSingle();
+        window.location.href = profile?.role === 'printer' ? 'print-station.html' : 'dashboard.html';
+      }
+    })();
+  </script>
+</body>
+</html>

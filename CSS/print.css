@@ -1,0 +1,125 @@
+/* ============================================================
+   Print-only styles · A4 & 80mm Thermal
+   ============================================================ */
+
+/* Elements hidden on print */
+@media print {
+  html, body {
+    background: #fff !important;
+    color: #000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .bg-orbs,
+  .sidebar,
+  .topbar,
+  .sidebar-backdrop,
+  .toast-container,
+  .popup-alert,
+  .modal-backdrop,
+  .menu-btn,
+  .no-print,
+  .form-actions,
+  .filter-bar,
+  .row-actions,
+  .pagination,
+  button,
+  .icon-btn,
+  .switch,
+  .preview-actions,
+  .card-head,
+  .queue-card,
+  .page-body > .glass-card:not(#printArea) {
+    display: none !important;
+  }
+
+  .app-shell { display: block !important; }
+  .main-content { display: block !important; }
+  .page-body { padding: 0 !important; gap: 0 !important; max-width: 100% !important; }
+  .glass-card {
+    background: #fff !important;
+    border: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+  }
+  .glass-card::before,
+  .glass-card::after { display: none !important; }
+
+  /* --------- Invoice preview (print) --------- */
+  .invoice-preview {
+    background: #fff !important;
+    color: #000 !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    font-size: 12pt;
+  }
+  .invoice-preview .inv-head { border-bottom-color: #000 !important; }
+  .invoice-preview .inv-shop h2 { color: #000 !important; }
+  .invoice-preview .inv-meta .inv-no { color: #000 !important; }
+  .invoice-preview table.inv-items th {
+    background: #e5e9ef !important;
+    color: #000 !important;
+    border-bottom: 1px solid #000 !important;
+  }
+  .invoice-preview table.inv-items td { border-bottom: 1px solid #ccc !important; color: #000 !important; }
+  .invoice-preview .inv-totals .trow.grand { color: #000 !important; border-top-color: #000 !important; }
+  .invoice-preview .inv-foot { border-top-color: #999 !important; color: #333 !important; }
+  .invoice-preview .inv-foot .thanks { color: #000 !important; }
+
+  /* Page setup for A4 */
+  @page { size: A4; margin: 12mm; }
+}
+
+/* ============================================================
+   A4 mode
+   ============================================================ */
+body.print-mode-a4 .invoice-preview {
+  max-width: 100%;
+}
+
+/* ============================================================
+   Thermal (80mm) mode
+   ============================================================ */
+body.print-mode-thermal .invoice-preview {
+  width: 76mm;
+  padding: 4mm;
+  font-size: 10pt;
+  background: #fff;
+  color: #000;
+}
+body.print-mode-thermal .invoice-preview .inv-head {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  border-bottom: 1px dashed #000;
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+}
+body.print-mode-thermal .invoice-preview .inv-shop { flex-direction: column; gap: 4px; }
+body.print-mode-thermal .invoice-preview .inv-shop img { width: 44px; height: 44px; }
+body.print-mode-thermal .invoice-preview .inv-shop h2 { font-size: 14pt; }
+body.print-mode-thermal .invoice-preview .inv-shop p { font-size: 8pt; }
+body.print-mode-thermal .invoice-preview .inv-meta { text-align: center; }
+body.print-mode-thermal .invoice-preview .inv-meta .inv-no { font-size: 11pt; }
+body.print-mode-thermal .invoice-preview .inv-parties { flex-direction: column; gap: 6px; }
+body.print-mode-thermal .invoice-preview table.inv-items th { font-size: 8pt; padding: 4px 5px; }
+body.print-mode-thermal .invoice-preview table.inv-items td { font-size: 9pt; padding: 4px 5px; }
+body.print-mode-thermal .invoice-preview .inv-totals { width: 100%; }
+body.print-mode-thermal .invoice-preview .inv-totals .trow { font-size: 9.5pt; }
+body.print-mode-thermal .invoice-preview .inv-totals .trow.grand { font-size: 11pt; }
+body.print-mode-thermal .invoice-preview .inv-foot { font-size: 8.5pt; margin-top: 10px; padding-top: 8px; border-top: 1px dashed #000; }
+
+@media print {
+  body.print-mode-thermal { width: 80mm; }
+  body.print-mode-thermal @page { size: 80mm auto; margin: 3mm; }
+}
+
+/* Thermal in browser preview (screen) */
+body.print-mode-thermal .invoice-preview {
+  box-shadow: 0 6px 30px rgba(0,0,0,0.35);
+  border-radius: 6px;
+  margin: 0 auto;
+}

@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Settings · Invoice Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Poppins:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body data-page="settings" data-require="admin">
+  <div class="bg-orbs" aria-hidden="true">
+    <span class="orb orb-1"></span><span class="orb orb-2"></span><span class="orb orb-3"></span>
+    <div class="grid-overlay"></div>
+  </div>
+
+  <div class="app-shell">
+    <aside id="sidebar" class="sidebar"></aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" id="menuBtn" aria-label="Open menu">
+          <i class="fa-solid fa-bars"></i>
+        </button>
+        <h1 class="page-title">Shop Settings</h1>
+        <div class="topbar-actions"><div class="user-chip" id="userChip"></div></div>
+      </header>
+
+      <section class="page-body">
+        <form id="settingsForm" class="glass-card form-card page-enter">
+          <div class="form-section">
+            <h2 class="section-title"><i class="fa-solid fa-store"></i> Shop Identity</h2>
+            <div class="grid-2">
+              <div class="field">
+                <label for="shopName">Shop Name</label>
+                <input type="text" id="shopName" required />
+              </div>
+              <div class="field">
+                <label for="phone">Phone</label>
+                <input type="tel" id="phone" />
+              </div>
+            </div>
+            <div class="field">
+              <label for="address">Address</label>
+              <input type="text" id="address" />
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h2 class="section-title"><i class="fa-solid fa-image"></i> Logo</h2>
+            <div class="logo-upload">
+              <img id="logoPreview" src="assets/logo.png" alt="Logo" onerror="this.src=''; this.alt='No logo';" />
+              <div class="logo-actions">
+                <input type="file" id="logoFile" accept="image/png,image/jpeg,image/svg+xml,image/webp" hidden />
+                <button type="button" class="btn btn-ghost btn-sm" id="chooseLogo"><i class="fa-solid fa-upload"></i> Upload Logo</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="clearLogo"><i class="fa-solid fa-trash"></i> Remove</button>
+                <p class="muted">PNG / JPG / SVG · max 2 MB</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h2 class="section-title"><i class="fa-solid fa-percent"></i> Tax & Currency</h2>
+            <div class="grid-3">
+              <div class="field">
+                <label for="taxPercent">Default Tax %</label>
+                <input type="number" id="taxPercent" min="0" step="0.01" value="0" />
+              </div>
+              <div class="field">
+                <label for="currency">Currency Code</label>
+                <input type="text" id="currency" maxlength="6" placeholder="PKR" />
+              </div>
+              <div class="field">
+                <label for="printMode">Print Mode</label>
+                <select id="printMode">
+                  <option value="a4">A4 Invoice</option>
+                  <option value="thermal">80mm Thermal Receipt</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary shimmer" id="saveBtn">
+              <span class="btn-label"><i class="fa-solid fa-floppy-disk"></i> Save Settings</span>
+              <span class="btn-spinner" hidden><i class="fa-solid fa-circle-notch fa-spin"></i></span>
+            </button>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <script type="module">
+    import { requireAuth, requireRole } from './js/auth.js';
+    import { supabase } from './js/supabase.js';
+    import { buildSidebar, buildUserChip, toast } from './js/app.js';
+
+    const session = await requireAuth();
+    if (session) {
+      const ok = await requireRole(session, ['admin']);
+      if (!ok) { window.location.href = 'dashboard.html'; }
+      await buildSidebar('settings');
+      await buildUserChip();
+      loadSettings();
+    }
+
+    let rowId = null;
+    let logoFile = null;
+
+    async function loadSettings() {
+      const { data } = await supabase.from('settings').select('*').limit(1).maybeSingle();
+      if (data) {
+        rowId = data.id;
+        document.getElementById('shopName').value = data.shop_name || 'My Shop';
+        document.getElementById('phone').value = data.phone || '+92 315 8901026';
+        document.getElementById('address').value = data.address || 'Plot D, 48, Metroville Block-4, Karachi, Pakistan';
+        document.getElementById('taxPercent').value = data.tax_percent ?? 0;
+        document.getElementById('currency').value = data.currency || 'PKR';
+        document.getElementById('printMode').value = data.print_mode || 'a4';
+        if (data.logo_url) document.getElementById('logoPreview').src = data.logo_url;
+      }
+    }
+
+    document.getElementById('chooseLogo').addEventListener('click', () => {
+      document.getElementById('logoFile').click();
+    });
+    document.getElementById('logoFile').addEventListener('change', (e) => {
+      const f = e.target.files[0];
+      if (!f) return;
+      if (f.size > 2 * 1024 * 1024) return toast('Logo must be under 2 MB', 'error');
+      logoFile = f;
+      document.getElementById('logoPreview').src = URL.createObjectURL(f);
+    });
+    document.getElementById('clearLogo').addEventListener('click', () => {
+      logoFile = null;
+      document.getElementById('logoFile').value = '';
+      document.getElementById('logoPreview').src = 'assets/logo.png';
+      toast('Logo cleared (will remove on save)', 'success');
+    });
+
+    document.getElementById('settingsForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('saveBtn');
+      btn.classList.add('loading');
+      btn.querySelector('.btn-label').hidden = true;
+      btn.querySelector('.btn-spinner').hidden = false;
+
+      try {
+        let logoUrl = document.getElementById('logoPreview').src;
+        if (logoUrl.includes('blob:')) logoUrl = '';
+
+        if (logoFile) {
+          const ext = logoFile.name.split('.').pop();
+          const path = `logo-${Date.now()}.${ext}`;
+          const { error: upErr } = await supabase.storage.from('logos').upload(path, logoFile, { upsert: true });
+          if (upErr) throw upErr;
+          const { data: pub } = supabase.storage.from('logos').getPublicUrl(path);
+          logoUrl = pub.publicUrl;
+        }
+
+        const payload = {
+          shop_name: document.getElementById('shopName').value.trim() || 'My Shop',
+          phone: document.getElementById('phone').value.trim(),
+          address: document.getElementById('address').value.trim(),
+          tax_percent: Number(document.getElementById('taxPercent').value || 0),
+          currency: document.getElementById('currency').value.trim() || 'PKR',
+          print_mode: document.getElementById('printMode').value,
+          logo_url: logoUrl || null,
+        };
+
+        let error;
+        if (rowId) {
+          ({ error } = await supabase.from('settings').update(payload).eq('id', rowId));
+        } else {
+          const res = await supabase.from('settings').insert(payload).select().single();
+          error = res.error;
+          if (res.data) rowId = res.data.id;
+        }
+        if (error) throw error;
+        toast('Settings saved', 'success');
+      } catch (err) {
+        console.error(err);
+        toast(err.message || 'Failed to save', 'error');
+      } finally {
+        btn.classList.remove('loading');
+        btn.querySelector('.btn-label').hidden = false;
+        btn.querySelector('.btn-spinner').hidden = true;
+      }
+    });
+  </script>
+</body>
+</html>

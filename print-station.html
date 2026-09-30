@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Print Station · Invoice Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Poppins:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body data-page="print-station" data-require="auth">
+  <div class="bg-orbs" aria-hidden="true">
+    <span class="orb orb-1"></span><span class="orb orb-2"></span><span class="orb orb-3"></span>
+    <div class="grid-overlay"></div>
+  </div>
+
+  <div class="app-shell">
+    <aside id="sidebar" class="sidebar"></aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" id="menuBtn" aria-label="Open menu">
+          <i class="fa-solid fa-bars"></i>
+        </button>
+        <h1 class="page-title"><i class="fa-solid fa-print"></i> Print Station</h1>
+        <div class="topbar-actions">
+          <label class="switch">
+            <input type="checkbox" id="autoPrintToggle" />
+            <span class="slider"></span>
+            <span class="switch-label">Auto-Print</span>
+          </label>
+          <div class="user-chip" id="userChip"></div>
+        </div>
+      </header>
+
+      <section class="page-body">
+        <div class="print-layout">
+          <!-- Queue -->
+          <div class="glass-card queue-card page-enter">
+            <div class="card-head">
+              <h2><i class="fa-solid fa-list-check"></i> Pending Queue</h2>
+              <span class="badge badge-pending" id="queueCount">0</span>
+            </div>
+            <div id="queueList" class="queue-list">
+              <div class="empty-state"><i class="fa-regular fa-circle-check"></i><p>Queue is empty</p></div>
+            </div>
+          </div>
+
+          <!-- Preview -->
+          <div class="glass-card preview-card page-enter" style="--delay:.08s" id="previewCard">
+            <div class="card-head">
+              <h2><i class="fa-regular fa-file-lines"></i> Preview</h2>
+              <div class="preview-actions">
+                <button class="btn btn-ghost btn-sm" id="reprintBtn" disabled><i class="fa-solid fa-rotate-right"></i> Reprint</button>
+                <button class="btn btn-primary shimmer" id="printNowBtn" disabled>
+                  <i class="fa-solid fa-print"></i> PRINT NOW
+                </button>
+              </div>
+            </div>
+            <div id="previewBody" class="preview-body">
+              <div class="empty-state"><i class="fa-regular fa-eye"></i><p>Select an invoice from the queue</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- New invoice popup -->
+  <div class="popup-alert" id="newAlert" hidden>
+    <div class="popup-icon"><i class="fa-solid fa-bell"></i></div>
+    <div class="popup-body">
+      <strong>New Invoice Received!</strong>
+      <span id="alertInvNo">—</span>
+    </div>
+  </div>
+
+  <script type="module">
+    import { requireAuth } from './js/auth.js';
+    import { supabase } from './js/supabase.js';
+    import { buildSidebar, buildUserChip, toast, fmtMoney, escapeHtml } from './js/app.js';
+    import { fetchInvoiceWithItems, printInvoice, invoiceHTML } from './js/invoice.js';
+
+    const session = await requireAuth();
+    let settings = {};
+    let queue = [];
+    let selected = null;
+
+    if (session) {
+      await buildSidebar('print-station');
+      await buildUserChip();
+      const res = await supabase.from('settings').select('*').limit(1).maybeSingle();
+      settings = res.data || {};
+
+      // Auto-print toggle persisted
+      const autoChk = document.getElementById('autoPrintToggle');
+      autoChk.checked = localStorage.getItem('autoPrint') === '1';
+      autoChk.addEventListener('change', () => {
+        localStorage.setItem('autoPrint', autoChk.checked ? '1' : '0');
+        toast(`Auto-print ${autoChk.checked ? 'enabled' : 'disabled'}`, 'success');
+      });
+
+      loadQueue();
+
+      // Realtime listener
+      supabase
+        .channel('invoices-print')
+        .on('postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'invoices' },
+          (payload) => onNewInvoice(payload.new))
+        .subscribe((status) => {
+          console.log('[Realtime]', status);
+        });
+    }
+
+    async function loadQueue() {
+      const { data, error } = await supabase
+        .from('invoices').select('*')
+        .eq('print_status', 'pending')
+        .order('created_at', { ascending: true });
+      if (error) return toast(error.message, 'error');
+      queue = data || [];
+      renderQueue();
+    }
+
+    function renderQueue() {
+      const el = document.getElementById('queueList');
+      document.getElementById('queueCount').textContent = queue.length;
+      if (!queue.length) {
+        el.innerHTML = `<div class="empty-state"><i class="fa-regular fa-circle-check"></i><p>Queue is empty</p></div>`;
+        return;
+      }
+      el.innerHTML = queue.map(inv => `
+        <div class="queue-item ${selected?.id === inv.id ? 'active' : ''}" data-id="${inv.id}">
+          <div class="qi-left">
+            <strong>${escapeHtml(inv.invoice_no || '—')}</strong>
+            <span>${escapeHtml(inv.customer_name || 'Walk-in')}</span>
+          </div>
+          <div class="qi-right">
+            <span class="qi-total">${fmtMoney(inv.total, settings?.currency || 'PKR')}</span>
+            <span class="qi-date">${escapeHtml((inv.invoice_date || inv.created_at || '').slice(0,10))}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    document.getElementById('queueList').addEventListener('click', (e) => {
+      const item = e.target.closest('.queue-item');
+      if (!item) return;
+      selectInvoice(item.dataset.id);
+    });
+
+    async function selectInvoice(id) {
+      const { data, error } = await fetchInvoiceWithItems(id);
+      if (error) return toast(error.message, 'error');
+      selected = data.invoice;
+      renderQueue();
+      document.getElementById('previewBody').innerHTML =
+        invoiceHTML(data.invoice, data.items, settings, { forScreen: true });
+      document.getElementById('printNowBtn').disabled = false;
+      document.getElementById('reprintBtn').disabled = false;
+    }
+
+    async function onNewInvoice(inv) {
+      if (!inv) return;
+      // Sound
+      playAlertSound();
+      // Popup
+      showAlert(inv.invoice_no);
+      // Refresh queue
+      queue.push(inv);
+      renderQueue();
+      // Select it
+      selectInvoice(inv.id);
+
+      // Auto-print
+      if (document.getElementById('autoPrintToggle').checked) {
+        setTimeout(() => printNow(), 600);
+      }
+    }
+
+    async function printNow() {
+      if (!selected) return;
+      const { data, error } = await fetchInvoiceWithItems(selected.id);
+      if (error) return toast(error.message, 'error');
+      printInvoice(data.invoice, data.items, settings);
+      await supabase.from('invoices')
+        .update({ print_status: 'printed', printed_at: new Date().toISOString() })
+        .eq('id', selected.id);
+      // Remove from queue
+      queue = queue.filter(q => q.id !== selected.id);
+      selected = null;
+      document.getElementById('previewBody').innerHTML =
+        `<div class="empty-state"><i class="fa-regular fa-eye"></i><p>Select an invoice from the queue</p></div>`;
+      document.getElementById('printNowBtn').disabled = true;
+      document.getElementById('reprintBtn').disabled = true;
+      renderQueue();
+      toast('Printed', 'success');
+    }
+
+    document.getElementById('printNowBtn').addEventListener('click', printNow);
+    document.getElementById('reprintBtn').addEventListener('click', printNow);
+
+    /* ---------- helpers ---------- */
+    function playAlertSound() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const now = ctx.currentTime;
+        [880, 1320].forEach((freq, i) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.0001, now + i * 0.16);
+          gain.gain.exponentialRampToValueAtTime(0.18, now + i * 0.16 + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.16 + 0.18);
+          osc.connect(gain).connect(ctx.destination);
+          osc.start(now + i * 0.16);
+          osc.stop(now + i * 0.16 + 0.22);
+        });
+      } catch (_) { /* ignore */ }
+    }
+
+    function showAlert(invNo) {
+      const el = document.getElementById('newAlert');
+      document.getElementById('alertInvNo').textContent = invNo || '';
+      el.hidden = false;
+      el.classList.add('show');
+      setTimeout(() => {
+        el.classList.remove('show');
+        setTimeout(() => el.hidden = true, 400);
+      }, 4000);
+    }
+  </script>
+</body>
+</html>

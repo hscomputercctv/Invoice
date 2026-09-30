@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Create Invoice · Invoice Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Poppins:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body data-page="create" data-require="auth">
+  <div class="bg-orbs" aria-hidden="true">
+    <span class="orb orb-1"></span><span class="orb orb-2"></span><span class="orb orb-3"></span>
+    <div class="grid-overlay"></div>
+  </div>
+
+  <div class="app-shell">
+    <aside id="sidebar" class="sidebar"></aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" id="menuBtn" aria-label="Open menu">
+          <i class="fa-solid fa-bars"></i>
+        </button>
+        <h1 class="page-title">Create Invoice</h1>
+        <div class="topbar-actions">
+          <div class="user-chip" id="userChip"></div>
+        </div>
+      </header>
+
+      <section class="page-body">
+        <form id="invoiceForm" class="glass-card form-card page-enter" novalidate>
+          <!-- Invoice meta -->
+          <div class="form-section">
+            <h2 class="section-title"><i class="fa-solid fa-file-circle-plus"></i> Invoice Details</h2>
+            <div class="grid-3">
+              <div class="field">
+                <label for="invoiceNo">Invoice Number</label>
+                <input type="text" id="invoiceNo" name="invoice_no" readonly placeholder="Generating..." />
+              </div>
+              <div class="field">
+                <label for="invoiceDate">Invoice Date</label>
+                <input type="date" id="invoiceDate" name="invoice_date" required />
+              </div>
+              <div class="field">
+                <label for="paymentStatus">Payment Status</label>
+                <select id="paymentStatus" name="payment_status">
+                  <option value="Unpaid">Unpaid</option>
+                  <option value="Partial">Partial</option>
+                  <option value="Paid">Paid</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Customer -->
+          <div class="form-section">
+            <h2 class="section-title"><i class="fa-solid fa-user"></i> Customer Information</h2>
+            <div class="grid-3">
+              <div class="field">
+                <label for="customerName">Customer Name</label>
+                <input type="text" id="customerName" name="customer_name" placeholder="Walk-in customer" />
+              </div>
+              <div class="field">
+                <label for="customerPhone">Phone</label>
+                <input type="tel" id="customerPhone" name="customer_phone" placeholder="+92 ..." />
+              </div>
+              <div class="field">
+                <label for="customerAddress">Address</label>
+                <input type="text" id="customerAddress" name="customer_address" placeholder="Optional" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Items -->
+          <div class="form-section">
+            <div class="section-head">
+              <h2 class="section-title"><i class="fa-solid fa-boxes-stacked"></i> Items</h2>
+              <button type="button" class="btn btn-ghost btn-sm" id="addRowBtn">
+                <i class="fa-solid fa-plus"></i> Add Item
+              </button>
+            </div>
+            <div class="items-table-wrap">
+              <table class="items-table">
+                <thead>
+                  <tr>
+                    <th style="min-width:180px;">Item</th>
+                    <th style="width:90px;">Qty</th>
+                    <th style="width:130px;">Unit Price</th>
+                    <th style="width:130px;">Total</th>
+                    <th style="width:50px;"></th>
+                  </tr>
+                </thead>
+                <tbody id="itemsBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Totals -->
+          <div class="form-section totals-section">
+            <div class="totals-left">
+              <div class="field">
+                <label for="notes">Notes</label>
+                <textarea id="notes" name="notes" rows="3" placeholder="Optional notes for the invoice"></textarea>
+              </div>
+            </div>
+            <div class="totals-right">
+              <div class="total-row"><span>Subtotal</span><span id="subtotal">0</span></div>
+              <div class="total-row">
+                <span>Discount</span>
+                <input type="number" id="discount" name="discount" min="0" step="0.01" value="0" />
+              </div>
+              <div class="total-row">
+                <span>Tax %</span>
+                <input type="number" id="taxPercent" name="tax_percent" min="0" step="0.01" value="0" />
+              </div>
+              <div class="total-row total-grand"><span>Grand Total</span><span id="grandTotal">0</span></div>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="btn btn-ghost" id="resetBtn">
+              <i class="fa-solid fa-rotate-left"></i> Reset
+            </button>
+            <button type="submit" class="btn btn-primary shimmer" id="saveBtn">
+              <span class="btn-label"><i class="fa-solid fa-floppy-disk"></i> Save & Send to Print Station</span>
+              <span class="btn-spinner" hidden><i class="fa-solid fa-circle-notch fa-spin"></i></span>
+            </button>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <script type="module">
+    import { requireAuth } from './js/auth.js';
+    import { supabase } from './js/supabase.js';
+    import { buildSidebar, buildUserChip, toast, fmtMoney, escapeHtml, rippleAll } from './js/app.js';
+    import { generateInvoiceNo, calculateTotals } from './js/invoice.js';
+
+    const session = await requireAuth();
+    if (session) {
+      await buildSidebar('create');
+      await buildUserChip();
+
+      // Settings
+      const { data: settings } = await supabase.from('settings').select('*').limit(1).maybeSingle();
+      const currency = settings?.currency || 'PKR';
+      const defaultTax = Number(settings?.tax_percent || 0);
+
+      // Init date + invoice number + tax
+      const today = new Date().toISOString().slice(0, 10);
+      document.getElementById('invoiceDate').value = today;
+      document.getElementById('taxPercent').value = defaultTax;
+
+      const invoiceNo = await generateInvoiceNo();
+      document.getElementById('invoiceNo').value = invoiceNo;
+
+      // Items handling
+      const itemsBody = document.getElementById('itemsBody');
+      const tpl = () => `
+        <tr class="item-row">
+          <td><input type="text" class="item-name" placeholder="Item name" /></td>
+          <td><input type="number" class="item-qty" min="1" step="1" value="1" /></td>
+          <td><input type="number" class="item-price" min="0" step="0.01" value="0" /></td>
+          <td class="item-total">0</td>
+          <td><button type="button" class="icon-btn remove-row" aria-label="Remove"><i class="fa-solid fa-trash"></i></button></td>
+        </tr>`;
+
+      function addRow() {
+        itemsBody.insertAdjacentHTML('beforeend', tpl());
+        recalc();
+        rippleAll();
+      }
+      function removeRow(btn) {
+        if (itemsBody.children.length <= 1) return;
+        btn.closest('tr').remove();
+        recalc();
+      }
+
+      itemsBody.addEventListener('input', recalc);
+      itemsBody.addEventListener('click', (e) => {
+        const btn = e.target.closest('.remove-row');
+        if (btn) removeRow(btn);
+      });
+      document.getElementById('addRowBtn').addEventListener('click', addRow);
+
+      document.getElementById('discount').addEventListener('input', recalc);
+      document.getElementById('taxPercent').addEventListener('input', recalc);
+
+      function getRows() {
+        return [...itemsBody.querySelectorAll('.item-row')].map(tr => ({
+          item_name: tr.querySelector('.item-name').value.trim(),
+          qty: Number(tr.querySelector('.item-qty').value || 0),
+          unit_price: Number(tr.querySelector('.item-price').value || 0),
+        }));
+      }
+
+      function recalc() {
+        const rows = getRows();
+        rows.forEach((r, i) => {
+          const total = r.qty * r.unit_price;
+          itemsBody.children[i].querySelector('.item-total').textContent = fmtMoney(total, currency);
+        });
+        const discount = Number(document.getElementById('discount').value || 0);
+        const taxPct = Number(document.getElementById('taxPercent').value || 0);
+        const t = calculateTotals(rows, discount, taxPct);
+        document.getElementById('subtotal').textContent = fmtMoney(t.subtotal, currency);
+        document.getElementById('grandTotal').textContent = fmtMoney(t.total, currency);
+      }
+
+      // Start with 3 rows
+      addRow(); addRow(); addRow();
+      recalc();
+
+      // Reset
+      document.getElementById('resetBtn').addEventListener('click', () => {
+        if (!confirm('Reset the form? Unsaved changes will be lost.')) return;
+        itemsBody.innerHTML = '';
+        document.getElementById('invoiceForm').reset();
+        document.getElementById('invoiceDate').value = today;
+        document.getElementById('taxPercent').value = defaultTax;
+        document.getElementById('discount').value = 0;
+        addRow(); addRow(); addRow();
+        recalc();
+      });
+
+      // Submit
+      const form = document.getElementById('invoiceForm');
+      const saveBtn = document.getElementById('saveBtn');
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const rows = getRows().filter(r => r.item_name && r.qty > 0);
+        if (!rows.length) {
+          toast('Add at least one item with a name and quantity.', 'error');
+          return;
+        }
+
+        saveBtn.classList.add('loading');
+        saveBtn.querySelector('.btn-label').hidden = true;
+        saveBtn.querySelector('.btn-spinner').hidden = false;
+
+        const discount = Number(document.getElementById('discount').value || 0);
+        const taxPct = Number(document.getElementById('taxPercent').value || 0);
+        const totals = calculateTotals(rows, discount, taxPct);
+
+        const payload = {
+          invoice_no: document.getElementById('invoiceNo').value,
+          customer_name: document.getElementById('customerName').value.trim() || 'Walk-in',
+          customer_phone: document.getElementById('customerPhone').value.trim(),
+          customer_address: document.getElementById('customerAddress').value.trim(),
+          invoice_date: document.getElementById('invoiceDate').value,
+          subtotal: totals.subtotal,
+          discount,
+          tax: totals.tax,
+          total: totals.total,
+          payment_status: document.getElementById('paymentStatus').value,
+          notes: document.getElementById('notes').value.trim(),
+          print_status: 'pending',
+          created_by: session.user.id,
+        };
+
+        try {
+          const { data: inv, error: invErr } = await supabase
+            .from('invoices').insert(payload).select().single();
+          if (invErr) throw invErr;
+
+          const itemsPayload = rows.map(r => ({
+            invoice_id: inv.id,
+            item_name: r.item_name,
+            qty: r.qty,
+            unit_price: r.unit_price,
+            line_total: r.qty * r.unit_price,
+          }));
+          const { error: itemsErr } = await supabase.from('invoice_items').insert(itemsPayload);
+          if (itemsErr) throw itemsErr;
+
+          toast('Invoice saved & sent to Print Station!', 'success');
+
+          // Reset for next invoice
+          setTimeout(async () => {
+            itemsBody.innerHTML = '';
+            form.reset();
+            document.getElementById('invoiceDate').value = today;
+            document.getElementById('taxPercent').value = defaultTax;
+            document.getElementById('invoiceNo').value = await generateInvoiceNo();
+            addRow(); addRow(); addRow();
+            recalc();
+            saveBtn.classList.remove('loading');
+            saveBtn.querySelector('.btn-label').hidden = false;
+            saveBtn.querySelector('.btn-spinner').hidden = true;
+          }, 700);
+        } catch (err) {
+          console.error(err);
+          toast(err.message || 'Failed to save invoice.', 'error');
+          saveBtn.classList.remove('loading');
+          saveBtn.querySelector('.btn-label').hidden = false;
+          saveBtn.querySelector('.btn-spinner').hidden = true;
+        }
+      });
+    }
+  </script>
+</body>
+</html>
