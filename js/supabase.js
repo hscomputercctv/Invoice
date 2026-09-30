@@ -13,7 +13,7 @@ export const SUPABASE_URL = 'https://pjipxxengfoumuloflwr.supabase.co';
 export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBqaXB4eGVuZ2ZvdW11bG9mbHdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA3NjMzMjEsImV4cCI6MjEwNjMzOTMyMX0.DP1-gYhMZfT2wm9rw0Wv4vD_tyIW55PqrP1eZ4Rt1T4';
 /* 🔺 END REPLACE 🔺 */
 
-if (SUPABASE_URL.includes('YOUR-PROJECT') || SUPABASE_ANON_KEY.includes('YOUR-ANON')) {
+if (SUPABASE_URL.includes('https://pjipxxengfoumuloflwr.supabase.co') || SUPABASE_ANON_KEY.includes('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBqaXB4eGVuZ2ZvdW11bG9mbHdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA3NjMzMjEsImV4cCI6MjEwNjMzOTMyMX0.DP1-gYhMZfT2wm9rw0Wv4vD_tyIW55PqrP1eZ4Rt1T4')) {
   // Friendly console hint if not configured
   console.warn(
     '[Supabase] Please set SUPABASE_URL and SUPABASE_ANON_KEY in js/supabase.js'
