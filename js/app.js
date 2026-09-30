@@ -313,7 +313,7 @@ export async function buildSidebar(activeKey) {
   }
 
   rippleAll();
-}
+
 
 export async function buildUserChip() {
   const el = document.getElementById('userChip');
