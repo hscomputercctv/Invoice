@@ -9,8 +9,8 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 
 /* 🔻 REPLACE THESE WITH YOUR PROJECT VALUES 🔻 */
-export const SUPABASE_URL = 'https://pjipxxengfoumuloflwr.supabase.co';
-export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBqaXB4eGVuZ2ZvdW11bG9mbHdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA3NjMzMjEsImV4cCI6MjEwNjMzOTMyMX0.DP1-gYhMZfT2wm9rw0Wv4vD_tyIW55PqrP1eZ4Rt1T4';
+export const SUPABASE_URL = 'https://oonocbpbkbuikrbxxxmw.supabase.co';
+export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9vbm9jYnBia2J1aWtyYnh4eG13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA4NTEwNjMsImV4cCI6MjEwNjQyNzA2M30.ZaoYo-YS4HrNHHTxwE0P9poiUxKmkqg6lN-DdNyRu7Y';
 /* 🔺 END REPLACE 🔺 */
 
 if (SUPABASE_URL.includes('https://pjipxxengfoumuloflwr.supabase.co') || SUPABASE_ANON_KEY.includes('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBqaXB4eGVuZ2ZvdW11bG9mbHdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA3NjMzMjEsImV4cCI6MjEwNjMzOTMyMX0.DP1-gYhMZfT2wm9rw0Wv4vD_tyIW55PqrP1eZ4Rt1T4')) {
